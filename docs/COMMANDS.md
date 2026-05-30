@@ -252,6 +252,51 @@ Prints the completion script to stdout. Pipe or append to your shell's config fi
 
 ---
 
+## config
+
+Manage the `de` configuration file without needing to know its OS-specific path.
+
+### config path
+
+Print the absolute path to the active `config.toml`.
+
+```
+de config path
+```
+
+Useful for scripting: `cat "$(de config path)"`.
+
+### config edit
+
+Open `config.toml` in your preferred terminal editor.
+
+```
+de config edit
+```
+
+If the file does not exist, it is created with a fully-commented default template before the editor opens.
+
+**Editor resolution** (first match wins):
+
+1. `DE_EDITOR` environment variable.
+2. `VISUAL` environment variable.
+3. `EDITOR` environment variable.
+4. Platform fallback: `nano` → `vi` (Unix), `notepad.exe` (Windows).
+
+If no editor is found, prints an actionable error and exits with code 1.
+
+### config show
+
+Print the current contents of `config.toml` to stdout.
+
+```
+de config show
+```
+
+If the file does not exist, prints the default commented template (does not create the file on disk).
+
+---
+
 ## version
 
 Print version metadata.

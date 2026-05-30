@@ -68,6 +68,8 @@ The master key (32 bytes) is stored in the OS keychain, never on the filesystem.
 10. Execute the target command with the merged environment via `os/exec`.
 11. Forward the subprocess exit code to the caller.
 
+**Exception:** Commands that do not interact with the store (`config`, `profile`, `completion`, `version`, `help`) skip steps 4–9. Notably, `de config edit` spawns an external editor process with forwarded stdin/stdout/stderr — no keychain or store access occurs.
+
 ## Security Architecture
 
 | Layer | Mechanism |

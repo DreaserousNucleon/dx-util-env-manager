@@ -93,7 +93,21 @@ On first invocation with no existing store, `de` prints a concise onboarding gui
 
 ### Config File
 
-Optional. Location: `~/.config/de/config.toml` (Linux/macOS) or `%APPDATA%\de\config.toml` (Windows).
+Optional. To open your config file in an editor:
+
+```bash
+de config edit
+```
+
+This creates the file with commented defaults if it does not exist, then opens it in your preferred editor. To find the config path for scripting:
+
+```bash
+de config path
+# Linux/macOS: ~/.config/de/config.toml
+# Windows:     %APPDATA%\de\config.toml
+```
+
+Available settings:
 
 ```toml
 # Show values in plaintext by default (default: false)
@@ -115,6 +129,8 @@ color = "auto"
 # When false (default): decryption failures produce an error with remediation hints.
 # allow_reinit_on_decrypt_fail = true
 ```
+
+> **Manual alternative:** The config file lives at `~/.config/de/config.toml` (Linux/macOS) or `%APPDATA%\de\config.toml` (Windows). You can edit it directly with any text editor.
 
 ### Environment Variable Overrides
 
@@ -261,6 +277,16 @@ Profiles allow isolated variable sets within the same directory. Allowed profile
 Resolution order: `--profile` flag > `DE_PROFILE` env var > `config.toml` > default (`dev`).
 
 A user who never touches profiles experiences identical behavior to v1.0.0 — the `dev` profile is implicit.
+
+#### `config` — Manage configuration
+
+```bash
+de config path          # Print config file path
+de config edit          # Open config.toml in your editor
+de config show          # Print config contents to stdout
+```
+
+`config edit` creates the file with commented defaults if it does not exist, then opens it in your preferred editor. Editor resolution: `DE_EDITOR` > `VISUAL` > `EDITOR` > platform default (`nano`/`vi` on Unix, `notepad.exe` on Windows).
 
 #### `version`
 
@@ -442,7 +468,9 @@ Each folder maps profile names to variable sets. Allowed profiles: `dev`, `stagi
 |----------|---------|
 | `DE_STORE_PATH` | Override the store file location |
 | `DE_CONFIG_DIR` | Override the config directory (store becomes `store.json` inside) |
-| `DE_REVEAL` | Set to `1` to show plaintext values in output by default || `DE_PROFILE` | Override the active environment profile |
+| `DE_REVEAL` | Set to `1` to show plaintext values in output by default |
+| `DE_PROFILE` | Override the active environment profile |
+| `DE_EDITOR` | Override the editor used by `de config edit` |
 ---
 
 ## Uninstallation

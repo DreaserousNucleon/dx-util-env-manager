@@ -370,6 +370,9 @@ go test ./...
 3. Update `usageText` in `internal/app/usage.go`.
 4. Add the command name to the completion scripts in `internal/app/completion.go`.
 5. Update `docs/COMMANDS.md`.
+6. If the command does not need the store, add it to `needsStore()` exclusion list.
+
+**Note:** `de config edit` is the only command that spawns a long-lived interactive process (the user's text editor). It uses `os/exec` with forwarded stdin/stdout/stderr identically to `runtime.Exec`, but does not inject environment variables or interact with the store.
 
 ### Modifying the Store Schema
 

@@ -12,6 +12,27 @@ const AppName = "de"
 
 const DefaultProfile = "dev"
 
+// DefaultConfigTemplate is the commented config.toml written on first `de config edit`.
+const DefaultConfigTemplate = `# de configuration file
+# See: de help | de config show
+
+# Show values in plaintext by default (default: false)
+# reveal = false
+
+# Color output: "auto", "always", "never" (default: "auto")
+# color = "auto"
+
+# Active environment profile (default: "dev")
+# Allowed: dev, staging, pre-prod, qe, prod
+# profile = "dev"
+
+# Override the store file path
+# store_path = "/custom/path/store.json"
+
+# Allow automatic store re-initialization when decryption fails after a key purge
+# allow_reinit_on_decrypt_fail = false
+`
+
 var AllowedProfiles = []string{"dev", "staging", "pre-prod", "qe", "prod"}
 
 // ValidateProfile returns an error if the profile name is not in the allowed set.

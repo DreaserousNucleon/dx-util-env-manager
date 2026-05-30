@@ -25,6 +25,9 @@ Usage:
   de profile
   de profile list
   de profile set <name>
+  de config path
+  de config edit
+  de config show
   de doctor
   de completion <bash|zsh|fish|powershell>
   de version
@@ -42,6 +45,13 @@ Profile commands:
 
   Profiles: dev, staging, pre-prod, qe, prod (default: dev).
   Resolution: --profile flag > DE_PROFILE env var > config.toml > default.
+
+Config commands:
+  de config path       Print the config file path.
+  de config edit       Open config.toml in your editor (creates with defaults if missing).
+  de config show       Print config.toml contents to stdout.
+
+  Editor resolution: DE_EDITOR > VISUAL > EDITOR > platform default.
 
 Notes:
   - Unknown commands are treated as exec targets.

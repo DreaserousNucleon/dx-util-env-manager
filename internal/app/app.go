@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"dx-util-env-manager/internal/config"
@@ -133,6 +135,8 @@ func run(ctx *Context, args []string) int {
 		return runExport(ctx, args[2:])
 	case "profile":
 		return runProfile(ctx, args[2:])
+	case "config":
+		return runConfig(ctx, args[2:])
 	case "completion":
 		return runCompletion(ctx, args[2:])
 	default:
@@ -645,6 +649,93 @@ func runDoctor(ctx *Context) int {
 	return 1
 }
 
+// --- config ---
+
+func runConfig(ctx *Context, args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(ctx.Err, "usage: de config <path|edit|show>")
+		return 2
+	}
+
+	switch args[0] {
+	case "path":
+		fmt.Fprintln(ctx.Out, config.ConfigFilePath(ctx.Config))
+		return 0
+	case "show":
+		path := config.ConfigFilePath(ctx.Config)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprint(ctx.Out, config.DefaultConfigTemplate)
+			return 0
+		}
+		ctx.Out.Write(data)
+		return 0
+	case "edit":
+		return runConfigEdit(ctx)
+	default:
+		fmt.Fprintf(ctx.Err, "unknown config subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+func runConfigEdit(ctx *Context) int {
+	path := config.ConfigFilePath(ctx.Config)
+
+	// Ensure file exists with default template.
+	if _, err := os.Stat(path); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			fmt.Fprintln(ctx.Err, "error:", err)
+			return 1
+		}
+		if err := os.WriteFile(path, []byte(config.DefaultConfigTemplate), 0600); err != nil {
+			fmt.Fprintln(ctx.Err, "error:", err)
+			return 1
+		}
+	}
+
+	editor, err := resolveEditor()
+	if err != nil {
+		fmt.Fprintln(ctx.Err, err)
+		return 1
+	}
+
+	cmd := exec.Command(editor, path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = ctx.Out
+	cmd.Stderr = ctx.Err
+
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		fmt.Fprintf(ctx.Err, "editor error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func resolveEditor() (string, error) {
+	for _, env := range []string{"DE_EDITOR", "VISUAL", "EDITOR"} {
+		if v := os.Getenv(env); v != "" {
+			return v, nil
+		}
+	}
+	// Platform fallback.
+	if isWindows() {
+		return "notepad.exe", nil
+	}
+	for _, name := range []string{"nano", "vi"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("no editor found; set EDITOR or DE_EDITOR environment variable")
+}
+
+func isWindows() bool {
+	return os.PathSeparator == '\\' && os.PathListSeparator == ';'
+}
+
 // --- profile ---
 
 func runProfile(ctx *Context, args []string) int {
@@ -689,7 +780,7 @@ func runProfile(ctx *Context, args []string) int {
 
 func needsStore(cmd string) bool {
 	switch cmd {
-	case "help", "-h", "--help", "version", "init", "completion", "profile":
+	case "help", "-h", "--help", "version", "init", "completion", "profile", "config":
 		return false
 	case "key":
 		return false // key import/export handle their own messaging

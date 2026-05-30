@@ -1,6 +1,6 @@
 # Roadmap
 
-> Phases 1–7 are complete and frozen at v1.0.0. Phase 8 is complete and frozen at v1.1.0. This document defines the evolution of `de`.
+> Phases 1–9 are complete and frozen (v1.0.0 through v1.2.0). This document defines the evolution of `de`.
 
 ---
 
@@ -23,175 +23,144 @@ All original development phases have been delivered and are production-ready:
 
 - ✓ Phase 8: Environment Profiles (store v3, profile dimension, --profile flag, DE_PROFILE, profile command, v2→v3 migration)
 
+## Completed (v1.2.0)
+
+- ✓ Phase 9: Inline Config Edit (config path/edit/show, editor resolution, default template, documentation)
+
 ---
 
-## Phase 6: Clean Uninstall & Re-Initialization Resilience
+## Phase 9: Inline Config Edit (Target: v1.2.0)
 
-**Goal:** Allow seamless recovery after a key purge without requiring manual filesystem intervention.
+**Goal:** Provide a native CLI method for users to view, modify, and open their configuration file without requiring them to know or remember the OS-specific config path.
 
 **Problem Statement:**
-After `de key purge --confirm` removes the master key from the OS keychain, the encrypted store file remains on disk. Any subsequent command that touches the store (e.g., `de init`, `de set`) attempts to decrypt it with a newly generated key, fails with a GCM authentication error, and blocks the user. The only recovery path today is manually deleting `~/.config/de/store.json` — an unacceptable UX gap for a tool designed for zero-friction operation.
+Currently, modifying `de`'s configuration requires users to manually locate and edit a TOML file at a platform-dependent path (`~/.config/de/config.toml` on Linux/macOS, `%APPDATA%\de\config.toml` on Windows). This creates unnecessary friction:
+- New users must read documentation to find the path.
+- The path differs across operating systems, complicating team runbooks.
+- There is no CLI-native way to inspect or modify settings beyond the `profile set` command added in v1.1.0.
 
-**Solution:** Introduce a guarded automatic re-initialization pathway triggered by decryption failure, controlled by an explicit opt-in configuration flag.
+**Solution:** Introduce a `de config` command family that provides first-class config file interaction directly from the terminal.
 
-| Task | Detail | Status |
-|------|--------|--------|
-| Add `allow_reinit_on_decrypt_fail` to config schema | New boolean field in `internal/config/config.go` `Config` struct. Parsed from `config.toml` key `allow_reinit_on_decrypt_fail`. | ✓ |
-| Default to `false` | The field must default to `false`. When false, decryption failures produce the existing error message with remediation hints (no behavior change). | ✓ |
-| Implement guarded re-init in store load path | In `json_store.go` `loadAndMigrate()`: when decryption fails AND no key exists in the keychain AND config flag is `true` → remove the unreadable store file, generate a fresh master key, and return an empty DB. | ✓ |
-| Safety logging | When automatic re-init fires, emit a clear warning to stderr: `"warning: store was unreadable (no master key); purged and re-initialized a fresh store."` | ✓ |
-| Guard against accidental data loss | Re-init MUST only trigger when ALL of the following are true simultaneously: (1) the config flag is `true`, (2) the decryption error is an authentication/integrity failure (not a filesystem permission error), (3) no master key exists in the keychain (confirming a prior purge rather than a corrupted key). If a key IS present in the keychain but decryption fails, this indicates a mismatched key — the existing error path with the `de key import` hint must be preserved. | ✓ |
-| Update `config.toml` documentation | Add commented example to README and inline comment in config loading explaining the flag's purpose and risk. | ✓ |
-| End-to-end validation | Verify the following sequence completes without manual intervention when the flag is enabled: `de init` → `de set FOO=bar` → `de key purge --confirm` → `de init` → `de set FOO=baz` → `de get FOO --reveal` returns `baz`. | ✓ |
-
-**Exit Criteria:** A user who has previously run `de key purge --confirm` can immediately run `de init` in any directory and resume normal operation without touching the filesystem, provided `allow_reinit_on_decrypt_fail = true` is set in their config. Users who have not opted in experience zero behavior change.
-
----
-
-## Phase 7: Codebase De-bloat & Release Freezing
-
-**Goal:** Remove legacy code paths, establish version control hygiene, and freeze the stable v1.0.0 release.
-
-### 7A: v1 Store Migration Removal
-
-**Rationale:** The v1 store format stored plaintext directory paths as JSON keys. The transparent v1→v2 migration in `loadAndMigrate()` was a transition mechanism. With v1.0.0 shipped and all stores upgraded on first load, retaining this code:
-- Increases attack surface (plaintext path handling logic remains reachable).
-- Adds cognitive load for maintainers reading the store layer.
-- Provides no value to any user who has run any command since v2 was introduced.
-
-| Task | Detail | Status |
-|------|--------|--------|
-| Remove v1 migration branch | In `json_store.go` `loadAndMigrate()`: delete the `if db.Version < 2 && len(db.Folders) > 0` block that iterates folders and re-hashes plaintext paths. | ✓ |
-| Fail explicitly on v1 stores | If a decrypted store has `version < 2`, return an error: `"store version %d is no longer supported; this store must be migrated with de v1.0.0 before upgrading"`. This prevents silent data loss if an ancient store is encountered. | ✓ |
-| Remove `CurrentVersion` write in migration path | The remaining `db.Version = CurrentVersion` assignment after the deleted block can stay (it normalizes version on fresh loads) but verify no dead code references remain. | ✓ |
-| Audit for orphaned v1 references | Grep codebase for any comments, test stubs, or documentation referencing "v1", "plaintext path", or "migration" and remove or update them. | ✓ |
-| Verify build and vet | `go build ./cmd/de ; go build ./cmd/internal ; go vet ./...` must pass cleanly. | ✓ |
-
-### 7B: Git Repository Initialization & Release Branch
-
-| Task | Detail | Status |
-|------|--------|--------|
-| `git init` | Initialize the repository in the project root. | ✓ |
-| Create `.gitignore` | Ignore: `de`, `de.exe`, `*.tmp`, `dist/`, and any IDE-specific directories (`.idea/`, `.vscode/` settings). Do NOT ignore `docs/` or `.goreleaser.yaml`. | ✓ |
-| Initial commit on `master` | Stage all files. Commit message: `feat: de v1.0.0 — production-ready local env runner`. This commit represents the complete, de-bloated codebase after Phase 7A. | ✓ |
-| Create `v1.0.0` release branch | `git branch v1.0.0` from the initial commit. This branch is frozen — no further commits unless a critical security patch is required. | ✓ |
-| Tag `v1.0.0` | `git tag -a v1.0.0 -m "Release v1.0.0: full local secret management CLI"` | ✓ |
-| Verify `master` is active | Confirm `git branch` shows `* master` as the working branch for future development. | ✓ |
-
-**Exit Criteria:** The repository has clean version control with a frozen release branch, the codebase contains zero v1 legacy code, and the master branch is ready for Phase 8 feature development targeting v1.1.0.
-
----
-
-## Phase 8: Environment Profiles (Target: v1.1.0)
-
-**Goal:** Allow developers to maintain multiple isolated environment configurations (e.g., dev, staging, prod) within the same directory, switchable with a single command.
-
-**Design Constraint:** The profile system must not degrade the current zero-friction UX. A user who never touches profiles experiences identical behavior to v1.0.0 — the `dev` profile is implicit and invisible.
-
-### Data Model Extension
-
-The encrypted store's folder structure gains a profile dimension:
-
-```json
-{
-  "version": 3,
-  "folders": {
-    "<hmac-folder-id>": {
-      "dev": {
-        "API_KEY": "dev-key",
-        "DB_URL": "localhost:5432/myapp"
-      },
-      "staging": {
-        "API_KEY": "staging-key",
-        "DB_URL": "staging-db.internal:5432/myapp"
-      }
-    }
-  }
-}
-```
-
-- **Version bump:** Store version becomes `3`. A transparent v2→v3 migration wraps existing flat `map[string]string` folder entries into `{"dev": <existing_map>}`.
-- **Profile names:** Restricted to the predefined set: `dev`, `staging`, `pre-prod`, `qe`, `prod`. Custom profile names are explicitly out of scope for v1.1.0.
-
-### Active Profile Resolution
-
-Resolution order (first match wins):
-
-1. `--profile` flag on the command (e.g., `de set KEY=VALUE --profile staging`).
-2. `DE_PROFILE` environment variable.
-3. `profile` key in `~/.config/de/config.toml`.
-4. Default: `dev`.
-
-The active profile applies to ALL commands that interact with the store: `set`, `get`, `unset`, `list`, `exec`, `export`, `migrate`.
+**Design Constraint:** The feature must not introduce new dependencies. Editor detection must use only standard environment variables and OS conventions. The existing `de profile set` command remains functional and unchanged — `de config edit` is the general-purpose superset.
 
 ### New Commands
 
 | Command | Behavior |
 |---------|----------|
-| `de profile` | Print the currently active profile name to stdout. |
-| `de profile set <name>` | Write `profile = "<name>"` to `config.toml`, making it the persistent default. Validates against the allowed set. |
-| `de profile list` | Print all allowed profile names, marking the active one with `*`. |
+| `de config path` | Print the absolute path to the active `config.toml` to stdout. Useful for scripting (`cat $(de config path)`). |
+| `de config edit` | Open `config.toml` in the user's preferred terminal editor. Creates the file with commented defaults if it does not exist. |
+| `de config show` | Print the current contents of `config.toml` to stdout (raw file contents). If the file does not exist, prints the default template with all keys commented out. |
+
+### Editor Resolution (for `config edit`)
+
+Resolution order (first match wins):
+
+1. `DE_EDITOR` environment variable (de-specific override).
+2. `VISUAL` environment variable.
+3. `EDITOR` environment variable.
+4. Platform fallback:
+   - **Linux/macOS:** `nano` (widely pre-installed), then `vi`.
+   - **Windows:** `notepad.exe` (always available).
+
+If no editor is found and no fallback is available, print an actionable error: `"no editor found; set EDITOR or DE_EDITOR environment variable"` and exit with code 1.
+
+### Default Config Template
+
+When `config edit` is invoked and no `config.toml` exists, the file must be created with the following commented template before opening the editor:
+
+```toml
+# de configuration file
+# See: de help | de config show
+
+# Show values in plaintext by default (default: false)
+# reveal = false
+
+# Color output: "auto", "always", "never" (default: "auto")
+# color = "auto"
+
+# Active environment profile (default: "dev")
+# Allowed: dev, staging, pre-prod, qe, prod
+# profile = "dev"
+
+# Override the store file path
+# store_path = "/custom/path/store.json"
+
+# Allow automatic store re-initialization when decryption fails after a key purge
+# allow_reinit_on_decrypt_fail = false
+```
+
+This ensures users always see the full option set with documentation inline.
 
 ### Implementation Tasks
 
-| Task | Detail | Status |
-|------|--------|--------|
-| Extend `Config` struct | Add `Profile string` field. Load from `config.toml` key `profile`, env var `DE_PROFILE`, and `--profile` global flag. Default `"dev"`. | ✓ |
-| Define allowed profiles | Constant slice: `[]string{"dev", "staging", "pre-prod", "qe", "prod"}`. Validation function rejects anything outside this set. | ✓ |
-| Update `DB` struct | `Folders` type changes from `map[string]map[string]string` to `map[string]map[string]map[string]string` (folder ID → profile → vars). | ✓ |
-| Store version bump to 3 | Update `CurrentVersion` to `3`. | ✓ |
-| v2→v3 transparent migration | In `loadAndMigrate()`: if `db.Version == 2`, wrap each folder's `map[string]string` into `{"dev": existing_map}` and set version to 3. Atomic save. | ✓ |
-| Thread profile through store interface | All `EnvStore` methods gain awareness of the active profile. The profile is determined at the `Context` level and passed into store calls. | ✓ |
-| Update `EnvStore` interface | Methods become profile-aware: `EnvForDir(dir, profile string)`, `SetVar(dir, profile, key, value string)`, etc. Alternatively, embed profile in the store constructor. Choose the approach that minimizes interface churn. | ✓ |
-| Implement `de profile` command | Route in `run()` switch. Subcommands: (none) → print active, `set <name>` → persist to config, `list` → enumerate with marker. | ✓ |
-| Add `--profile` global flag | Parse alongside `--verbose` and `--json` in `parseGlobalFlags()`. Override `ctx.Config.Profile` if present. | ✓ |
-| Update `exec` to use active profile | `runExec()` reads `ctx.Config.Profile` and passes it to `EnvForDir()`. | ✓ |
-| Update `set`, `get`, `unset`, `list` | All CRUD commands use `ctx.Config.Profile` for store operations. | ✓ |
-| Update `export` | Export emits variables from the active profile. | ✓ |
-| Update `migrate` | Imports into the active profile for the directory. | ✓ |
-| Update `doctor` | Validate the v3 store structure. Report per-profile variable counts. | ✓ |
-| Update `key rotate` | Re-hash logic must handle the nested profile structure. | ✓ |
-| Update shell completions | Add `profile` to command lists. Add `--profile` completion for all relevant commands. Add profile name completions for `de profile set`. | ✓ |
-| Update usage text | Add `de profile`, `de profile set <name>`, `de profile list` to help output. Document `--profile` global flag. | ✓ |
-| Update documentation | README, COMMANDS.md, ARCHITECTURE.md — document profile behavior, resolution order, and data model change. | ✓ |
-| Backward-compatible guarantee | A user who never sets a profile, never passes `--profile`, and has no `DE_PROFILE` env var experiences identical behavior to v1.0.0. The `dev` profile is implicit. Verify with existing workflow: `de init` → `de set KEY=VALUE` → `de get KEY --reveal` → returns VALUE. | ✓ |
-| Build and vet | `go build ./cmd/de ; go vet ./...` clean. | ✓ |
+| # | Task | Detail | Status |
+|---|------|--------|--------|
+| 1 | Add `config` case to command router | In `app.go` `run()` switch, add `case "config"` routing to `runConfig(ctx, args[2:])`. Add `"config"` to `needsStore()` exclusion list (config commands do not require the store). | ✓ |
+| 2 | Implement `runConfig()` dispatcher | Parse subcommands: no args or `"help"` → print config usage, `"path"` → `runConfigPath()`, `"edit"` → `runConfigEdit()`, `"show"` → `runConfigShow()`. Unknown subcommand → error with usage hint. | ✓ |
+| 3 | Implement `de config path` | `fmt.Fprintln(ctx.Out, config.ConfigFilePath(ctx.Config))`. Trivial — prints the resolved path and exits 0. | ✓ |
+| 4 | Implement `de config show` | Read `config.toml` from `config.ConfigFilePath(ctx.Config)`. If file exists, print contents to stdout. If file does not exist, print the default commented template to stdout (do NOT create the file on disk for `show`). | ✓ |
+| 5 | Define default config template | Create a `const defaultConfigTemplate` in `internal/config/config.go` containing the full commented TOML template. This constant is reused by both `config show` (stdout) and `config edit` (file creation). | ✓ |
+| 6 | Implement editor resolution | Create `resolveEditor() (string, error)` in `internal/app/app.go` (or a small helper). Check `DE_EDITOR` → `VISUAL` → `EDITOR` → platform fallback. On Windows, use `notepad.exe`. On Unix, try `nano` then `vi` existence via `exec.LookPath`. Return error if nothing found. | ✓ |
+| 7 | Implement `de config edit` | (a) Resolve config file path. (b) If file does not exist, create it with the default template (mode 0600, parent dir 0700). (c) Resolve editor. (d) Execute `editor <config-path>` via `os/exec` with stdin/stdout/stderr forwarded (same pattern as `runtime.Exec`). (e) Wait for editor to exit. Return editor's exit code. | ✓ |
+| 8 | Handle editor exit codes | If the editor process fails to start (not found, permission denied), print an actionable error and return exit code 1. If the editor exits non-zero, forward that exit code without additional messaging. | ✓ |
+| 9 | Add `config` to shell completions | Add `"config"` to all four shell completion command lists (bash, zsh, fish, powershell). Add subcommand completions for `de config`: `path`, `edit`, `show`. | ✓ |
+| 10 | Update usage text | Add `de config path`, `de config edit`, `de config show` to `usageText` in `usage.go`. Document `DE_EDITOR` in the environment variables section. | ✓ |
+| 11 | Build and vet | `go build ./cmd/de ; go build ./cmd/internal ; go vet ./...` must pass cleanly. | ✓ |
+
+### 9B: Documentation Update
+
+**Strict dependency:** The release CANNOT be finalized until all documentation updates below are committed. This ensures the published v1.2.0 tag always ships with accurate, self-consistent documentation.
+
+| # | Task | Detail | Status |
+|---|------|--------|--------|
+| 12 | Update `README.md` — CLI Reference | Add `de config path`, `de config edit`, `de config show` to the Commands section. Replace the manual "Config File" section's OS path instructions with a reference to `de config path` and `de config edit` as the primary workflow. Keep the OS paths as a "Manual alternative" note. | ✓ |
+| 13 | Update `README.md` — Environment Variables | Add `DE_EDITOR` to the environment variables table with description: "Override the editor used by `de config edit`". | ✓ |
+| 14 | Update `COMMANDS.md` | Add a full `## config` section documenting `config path`, `config edit`, `config show`, editor resolution order, and default template behavior. | ✓ |
+| 15 | Update `ARCHITECTURE.md` | Add a note to the Execution Flow or Components section explaining that `de config edit` spawns an external editor process with forwarded I/O. No store or keychain interaction occurs. | ✓ |
+| 16 | Update `MAINTAINER.md` | Add `config` to the "Adding a New Command" checklist example. Note that `config edit` is the only command that spawns a long-lived interactive process (the editor). | ✓ |
+| 17 | Verify documentation accuracy | Re-read all five docs files and confirm no stale references to "manually edit config.toml" remain without also mentioning `de config edit`. | ✓ |
+
+### 9C: Git Workflow & Release Freeze
+
+**Strict ordering:** All implementation tasks (9A #1–#11) and all documentation tasks (9B #12–#17) MUST be committed to `master` before any release operations. The release branch and tag are created from the fully-complete `master` HEAD.
+
+| # | Task | Detail | Status |
+|---|------|--------|--------|
+| 18 | Commit feature code | Stage all modified Go source files. Commit message: `feat: de config edit/path/show — inline config management (v1.2.0)`. | ✓ |
+| 19 | Commit documentation | Stage all modified `.md` files. Commit message: `docs: update all documentation for v1.2.0 config commands`. May be combined with #18 into a single commit if preferred. | ✓ |
+| 20 | Create `v1.2.0` release branch | `git branch v1.2.0` from the `master` HEAD containing both commits. This branch is frozen — no further commits unless a critical security patch is required. | ✓ |
+| 21 | Tag `v1.2.0` | `git tag -a v1.2.0 -m "Release v1.2.0: inline config editing, config path/show commands"` | ✓ |
+| 22 | Verify `master` is active | Confirm `git branch` shows `* master`. Confirm `git tag -l` shows `v1.0.0`, `v1.1.0`, `v1.2.0`. | ✓ |
 
 ### UX Examples
 
 ```bash
-# Default behavior (implicit "dev" profile, zero-friction)
-de set API_KEY=dev-key-123
-de npm run dev                  # injects dev-key-123
+# Find where your config lives (useful in scripts or unfamiliar machines)
+de config path
+# Output: /home/user/.config/de/config.toml
 
-# Switch to staging
-de profile set staging
-de set API_KEY=staging-key-456
-de npm run dev                  # injects staging-key-456
+# Open config in your preferred editor
+de config edit
+# → Opens nano/vim/$EDITOR with config.toml
+# → File is created with commented defaults if it didn't exist
 
-# One-off execution with a different profile
-de --profile prod exec -- node server.js
+# Quick inspection without opening an editor
+de config show
+# → Prints config.toml contents to stdout (pipe-friendly)
 
-# Check active profile
-de profile                      # prints: staging
+# Override editor for a single invocation
+DE_EDITOR=code de config edit
+# → Opens config.toml in VS Code
 
-# See all profiles
-de profile list
-#   dev
-# * staging
-#   pre-prod
-#   qe
-#   prod
+# Use in scripts to check config path
+cat "$(de config path)"
 ```
 
-**Exit Criteria:** A developer can manage isolated variable sets per profile within the same directory, switch profiles persistently or per-command, and experience zero UX regression when profiles are not explicitly used. The store transparently upgrades from v2 to v3 on first access after the update.
+### Security Considerations
 
----
+- `de config edit` spawns a child process (the editor). The editor inherits the current process environment but does NOT receive any secrets from the encrypted store — this command never loads the store.
+- The config file itself contains no secrets (only preferences like `reveal`, `color`, `profile`). The `store_path` value is a filesystem path, not a credential.
+- File creation uses mode `0600` (owner read/write only) and parent directory `0700`.
+- No shell expansion or interpolation is applied to the editor command — it is invoked directly via `os/exec`, preventing command injection.
 
-## Summary
-
-| Phase | Target | Focus | Status |
-|-------|--------|-------|--------|
-| 6 | Post-v1.0.0 patch | Re-initialization resilience after key purge | ✓ Complete |
-| 7 | v1.0.0 freeze | Legacy removal + git workflow establishment | ✓ Complete |
-| 8 | v1.1.0 feature | Environment profiles for multi-context workflows | ✓ Complete |
+**Exit Criteria:** A user on any supported platform can run `de config edit` to immediately open their configuration file in an editor without needing to know the OS-specific path. `de config path` and `de config show` provide non-interactive access for scripting and inspection. All documentation reflects the new commands as the primary config workflow. The v1.2.0 tag is created from a `master` commit that includes both the implementation and the documentation update.
