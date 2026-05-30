@@ -1,10 +1,12 @@
 package store
 
-const CurrentVersion = 2
+const CurrentVersion = 3
 
+// DB is the decrypted store shape (v3).
+// Folders maps folderID → profile → vars.
 type DB struct {
-	Version int                          `json:"version"`
-	Folders map[string]map[string]string `json:"folders"`
+	Version int                                     `json:"version"`
+	Folders map[string]map[string]map[string]string `json:"folders"`
 }
 
 // DoctorResult holds the output of a store integrity check.

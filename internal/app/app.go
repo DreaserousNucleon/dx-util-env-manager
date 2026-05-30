@@ -51,12 +51,12 @@ func Run(args []string, out io.Writer, errW io.Writer) int {
 	}
 
 	// Parse global flags before the subcommand.
-	args, mode = parseGlobalFlags(args, mode)
+	args, mode, cfg = parseGlobalFlags(args, mode, cfg)
 
 	ctx := &Context{
 		Out:    out,
 		Err:    errW,
-		Store:  store.NewJSONStore(cfg.StorePath, cfg.AllowReinitOnDecryptFail, errW),
+		Store:  store.NewJSONStore(cfg.StorePath, cfg.Profile, cfg.AllowReinitOnDecryptFail, errW),
 		Config: cfg,
 		Mode:   mode,
 	}
@@ -64,24 +64,29 @@ func Run(args []string, out io.Writer, errW io.Writer) int {
 	return run(ctx, args)
 }
 
-// parseGlobalFlags extracts --verbose and --json from args[1:] before the subcommand.
-func parseGlobalFlags(args []string, m outputMode) ([]string, outputMode) {
+// parseGlobalFlags extracts --verbose, --json, and --profile from args[1:] before the subcommand.
+func parseGlobalFlags(args []string, m outputMode, cfg config.Config) ([]string, outputMode, config.Config) {
 	if len(args) < 2 {
-		return args, m
+		return args, m, cfg
 	}
 
 	cleaned := []string{args[0]}
-	for _, a := range args[1:] {
-		switch a {
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
 		case "--verbose":
 			m.Verbose = true
 		case "--json":
 			m.JSON = true
+		case "--profile":
+			if i+1 < len(args) {
+				i++
+				cfg.Profile = args[i]
+			}
 		default:
-			cleaned = append(cleaned, a)
+			cleaned = append(cleaned, args[i])
 		}
 	}
-	return cleaned, m
+	return cleaned, m, cfg
 }
 
 func run(ctx *Context, args []string) int {
@@ -126,6 +131,8 @@ func run(ctx *Context, args []string) int {
 		return runDoctor(ctx)
 	case "export":
 		return runExport(ctx, args[2:])
+	case "profile":
+		return runProfile(ctx, args[2:])
 	case "completion":
 		return runCompletion(ctx, args[2:])
 	default:
@@ -638,11 +645,51 @@ func runDoctor(ctx *Context) int {
 	return 1
 }
 
+// --- profile ---
+
+func runProfile(ctx *Context, args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(ctx.Out, ctx.Config.Profile)
+		return 0
+	}
+
+	switch args[0] {
+	case "list":
+		for _, p := range config.AllowedProfiles {
+			if p == ctx.Config.Profile {
+				fmt.Fprintf(ctx.Out, "* %s\n", p)
+			} else {
+				fmt.Fprintf(ctx.Out, "  %s\n", p)
+			}
+		}
+		return 0
+	case "set":
+		if len(args) < 2 {
+			fmt.Fprintln(ctx.Err, "usage: de profile set <name>")
+			return 2
+		}
+		name := args[1]
+		if err := config.ValidateProfile(name); err != nil {
+			fmt.Fprintln(ctx.Err, err)
+			return 2
+		}
+		if err := config.SetProfileInFile(ctx.Config, name); err != nil {
+			fmt.Fprintln(ctx.Err, "config write error:", err)
+			return 1
+		}
+		fmt.Fprintf(ctx.Out, "profile set to %s\n", name)
+		return 0
+	default:
+		fmt.Fprintf(ctx.Err, "unknown profile subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
 // --- first-run ---
 
 func needsStore(cmd string) bool {
 	switch cmd {
-	case "help", "-h", "--help", "version", "init", "completion":
+	case "help", "-h", "--help", "version", "init", "completion", "profile":
 		return false
 	case "key":
 		return false // key import/export handle their own messaging

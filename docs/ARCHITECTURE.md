@@ -25,19 +25,26 @@
 
 ## Data Model
 
-The encrypted store (v2) uses HMAC-SHA256 hashes as folder identifiers:
+The encrypted store (v3) uses HMAC-SHA256 hashes as folder identifiers with a profile dimension:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "folders": {
     "<hmac-sha256-hex-64-chars>": {
-      "API_KEY": "secret-value",
-      "DB_URL": "postgres://..."
+      "dev": {
+        "API_KEY": "dev-secret",
+        "DB_URL": "postgres://localhost/mydb"
+      },
+      "staging": {
+        "API_KEY": "staging-secret"
+      }
     }
   }
 }
 ```
+
+Each folder entry maps profile names to variable sets. Allowed profiles: `dev`, `staging`, `pre-prod`, `qe`, `prod`.
 
 On disk, this JSON is encrypted with AES-256-GCM. The file is a raw ciphertext blob:
 
@@ -50,14 +57,16 @@ The master key (32 bytes) is stored in the OS keychain, never on the filesystem.
 ## Execution Flow
 
 1. Load configuration (defaults → env overrides → config.toml).
-2. Parse global flags (`--verbose`, `--json`) and route to the target command.
-3. Resolve the directory context via `paths.CanonicalDir()` (absolute, clean, symlinks resolved, case-folded on Windows).
-4. Retrieve master key from OS keychain (or generate on first use).
-5. Decrypt the store file with AES-GCM.
-6. Compute `HMAC-SHA256(canonical_path, master_key)` to find the folder entry.
-7. Merge stored variables with the current process environment.
-8. Execute the target command with the merged environment via `os/exec`.
-9. Forward the subprocess exit code to the caller.
+2. Parse global flags (`--verbose`, `--json`, `--profile`) and route to the target command.
+3. Resolve the active profile (`--profile` flag > `DE_PROFILE` env var > config.toml > default `dev`).
+4. Resolve the directory context via `paths.CanonicalDir()` (absolute, clean, symlinks resolved, case-folded on Windows).
+5. Retrieve master key from OS keychain (or generate on first use).
+6. Decrypt the store file with AES-GCM.
+7. Compute `HMAC-SHA256(canonical_path, master_key)` to find the folder entry.
+8. Select the active profile's variable set from the folder entry.
+9. Merge stored variables with the current process environment.
+10. Execute the target command with the merged environment via `os/exec`.
+11. Forward the subprocess exit code to the caller.
 
 ## Security Architecture
 
@@ -74,9 +83,10 @@ The master key (32 bytes) is stored in the OS keychain, never on the filesystem.
 
 ## Store Versioning
 
-- **v1 (removed):** Stored plaintext directory paths as JSON keys. Transparent migration was available in early releases but has been removed. Stores at v1 are now rejected with an explicit error.
-- **v2 (current):** Folder keys are HMAC-SHA256 hex digests keyed with the master key.
-- **Future versions:** Increment `CurrentVersion` in `store.go` and add a version check in `loadAndMigrate()`.
+- **v1 (removed):** Stored plaintext directory paths as JSON keys. Rejected with an explicit error directing users to migrate via v1.0.0 first.
+- **v2 (legacy):** Folder keys are HMAC-SHA256 hex digests; folder values are flat `map[string]string`. Transparently migrated to v3 on first load (existing vars wrapped into the `dev` profile).
+- **v3 (current):** Folder values gain a profile dimension: `map[profile]map[key]value`. Introduced in v1.1.0.
+- **Future versions:** Increment `CurrentVersion` in `store.go` and add a version check in `loadDBWithKey()`.
 
 ## Cross-Platform Behavior
 

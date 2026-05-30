@@ -8,6 +8,18 @@ Complete reference for all `de` commands. All commands default to the current wo
 |------|-------------|
 | `--verbose` | Print resolved directory, store path, and variable count to stderr |
 | `--json` | Emit machine-readable JSON output where supported |
+| `--profile NAME` | Override the active environment profile for this invocation |
+
+### Profile Resolution
+
+The active profile is determined by (first match wins):
+
+1. `--profile` flag on the command line.
+2. `DE_PROFILE` environment variable.
+3. `profile` key in `config.toml`.
+4. Default: `dev`.
+
+Allowed profiles: `dev`, `staging`, `pre-prod`, `qe`, `prod`.
 
 ---
 
@@ -183,7 +195,48 @@ Checks:
 - Keychain access (master key retrievable).
 - Store decryption succeeds.
 - All folder IDs are valid 64-character hex strings (HMAC-SHA256).
-- Reports folder count, total variable count, and any errors.
+- Reports folder count, total variable count (across all profiles), and any errors.
+
+---
+
+## profile
+
+Manage environment profiles. Profiles allow isolated variable sets within the same directory.
+
+### profile (no subcommand)
+
+Print the currently active profile name.
+
+```
+de profile
+```
+
+### profile list
+
+List all allowed profile names, marking the active one with `*`.
+
+```
+de profile list
+```
+
+Example output:
+```
+  dev
+* staging
+  pre-prod
+  qe
+  prod
+```
+
+### profile set
+
+Set the persistent default profile in `config.toml`.
+
+```
+de profile set <name>
+```
+
+Validates `name` against the allowed set. Returns an error for invalid profile names.
 
 ---
 

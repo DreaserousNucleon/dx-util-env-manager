@@ -161,23 +161,33 @@ The file at `~/.config/de/store.json` is **not** JSON on disk. It is a raw AES-G
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "folders": {
     "a3f8...64-char-hex-hmac...": {
-      "API_KEY": "sk-live-abc123",
-      "DB_HOST": "localhost"
+      "dev": {
+        "API_KEY": "sk-live-abc123",
+        "DB_HOST": "localhost"
+      },
+      "staging": {
+        "API_KEY": "sk-staging-xyz"
+      }
     },
     "b7c2...another-hmac...": {
-      "PORT": "8080"
+      "dev": {
+        "PORT": "8080"
+      }
     }
   }
 }
 ```
 
+Each folder maps profile names (`dev`, `staging`, `pre-prod`, `qe`, `prod`) to variable sets.
+
 ### Store Versioning
 
-- **Version 1:** Folder keys were plaintext canonical paths. This version is no longer written but is transparently upgraded on load.
-- **Version 2 (current):** Folder keys are HMAC-SHA256 hex digests. Migration happens in `loadAndMigrate()` and is atomic (old store is replaced via tmp+rename).
+- **Version 1:** Folder keys were plaintext canonical paths. This version is rejected with an explicit error directing users to migrate via v1.0.0.
+- **Version 2:** Folder keys are HMAC-SHA256 hex digests; values are flat `map[string]string`. Transparently migrated to v3 on first load (existing vars wrapped into the `dev` profile).
+- **Version 3 (current):** Folder values gain a profile dimension: `map[profile]map[key]value`. Migration from v2 is atomic (old store replaced via tmp+rename).
 
 ### Atomic Write Strategy
 
@@ -208,7 +218,7 @@ This means after rotation, the folder IDs are `HMAC(old_hmac_hex_string, newKey)
 1. Retrieve key from keychain (fail → report keychain error).
 2. Decrypt store with key (fail → report decryption error).
 3. Validate all folder ID lengths are 64 characters (detect v1 remnants).
-4. Count folders and total variables.
+4. Count folders and total variables (across all profiles).
 5. Report `status: ok` or `status: errors detected`.
 
 ---
@@ -364,7 +374,7 @@ go test ./...
 ### Modifying the Store Schema
 
 1. Increment `CurrentVersion` in `internal/store/store.go`.
-2. Add migration logic in `loadAndMigrate()` for the new version.
+2. Add migration logic in `loadDBWithKey()` for the new version (peek at version field, unmarshal with old struct, convert to new shape).
 3. Ensure backward compatibility: old stores must be transparently upgraded on load.
 4. Atomic write guarantees remain: never leave a partially-migrated store on disk.
 

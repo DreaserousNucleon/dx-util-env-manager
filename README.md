@@ -102,6 +102,10 @@ reveal = false
 # Color output: "auto", "always", "never" (default: "auto")
 color = "auto"
 
+# Active environment profile (default: "dev")
+# Allowed: dev, staging, pre-prod, qe, prod
+# profile = "dev"
+
 # Override the store file path
 # store_path = "/custom/path/store.json"
 
@@ -119,6 +123,7 @@ color = "auto"
 | `DE_STORE_PATH` | Absolute path to the encrypted store file |
 | `DE_CONFIG_DIR` | Config directory; store becomes `store.json` inside it |
 | `DE_REVEAL` | Set to `1` to show plaintext values in output |
+| `DE_PROFILE` | Override the active environment profile |
 
 Environment variables take precedence over the config file.
 
@@ -127,7 +132,7 @@ Environment variables take precedence over the config file.
 ## CLI Reference
 
 ```
-de [--verbose] [--json] <command> [args...]
+de [--verbose] [--json] [--profile NAME] <command> [args...]
 ```
 
 ### Global Flags
@@ -136,6 +141,7 @@ de [--verbose] [--json] <command> [args...]
 |------|-------------|
 | `--verbose` | Print resolved directory, store path, and variable count to stderr |
 | `--json` | Emit machine-readable JSON output where supported |
+| `--profile NAME` | Override the active environment profile for this invocation |
 
 ### Commands
 
@@ -241,6 +247,20 @@ de completion <bash|zsh|fish|powershell>
 ```
 
 Outputs a completion script for the specified shell. See [Shell Completions](#shell-completions) below.
+
+#### `profile` — Manage environment profiles
+
+```bash
+de profile              # Print active profile
+de profile list         # List all profiles (marks active with *)
+de profile set <name>   # Set persistent default profile
+```
+
+Profiles allow isolated variable sets within the same directory. Allowed profiles: `dev`, `staging`, `pre-prod`, `qe`, `prod`.
+
+Resolution order: `--profile` flag > `DE_PROFILE` env var > `config.toml` > default (`dev`).
+
+A user who never touches profiles experiences identical behavior to v1.0.0 — the `dev` profile is implicit.
 
 #### `version`
 
@@ -384,14 +404,21 @@ The file on disk is a raw AES-GCM ciphertext blob (not JSON). When decrypted, th
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "folders": {
     "<hmac-sha256-hex>": {
-      "KEY": "value"
+      "dev": {
+        "KEY": "value"
+      },
+      "staging": {
+        "KEY": "other-value"
+      }
     }
   }
 }
 ```
+
+Each folder maps profile names to variable sets. Allowed profiles: `dev`, `staging`, `pre-prod`, `qe`, `prod`.
 
 ### Security Properties
 
@@ -403,8 +430,9 @@ The file on disk is a raw AES-GCM ciphertext blob (not JSON). When decrypted, th
 
 ### Data Store Versioning
 
-- **v1:** Stored plaintext directory paths as keys. Transparently migrated to v2 on first load.
-- **v2 (current):** Stores HMAC-SHA256 hashes of canonical directory paths.
+- **v1:** Stored plaintext directory paths as keys. No longer supported; rejected with an error.
+- **v2:** Stored HMAC-SHA256 hashes with flat variable maps. Transparently migrated to v3 on first load.
+- **v3 (current):** Stores HMAC-SHA256 hashes with profile-dimensioned variable maps.
 
 ---
 
@@ -414,8 +442,7 @@ The file on disk is a raw AES-GCM ciphertext blob (not JSON). When decrypted, th
 |----------|---------|
 | `DE_STORE_PATH` | Override the store file location |
 | `DE_CONFIG_DIR` | Override the config directory (store becomes `store.json` inside) |
-| `DE_REVEAL` | Set to `1` to show plaintext values in output by default |
-
+| `DE_REVEAL` | Set to `1` to show plaintext values in output by default || `DE_PROFILE` | Override the active environment profile |
 ---
 
 ## Uninstallation
