@@ -1,0 +1,18 @@
+# Binaries
+de
+de.exe
+*.exe
+
+# Temp files from atomic writes
+*.tmp
+
+# Release output
+dist/
+
+# IDE
+.idea/
+.vscode/
+
+# Dev scratch
+prompts.temp/
+main.py
