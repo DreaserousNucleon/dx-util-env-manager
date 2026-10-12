@@ -6,7 +6,7 @@ before:
 
 builds:
   - id: de
-    main: ./cmd/de
+    main: ./cmd/internal
     binary: de
     env:
       - CGO_ENABLED=0
